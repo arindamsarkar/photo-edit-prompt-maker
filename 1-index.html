@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Photo Edit Prompt Maker</title>
+<style>
+:root{--page:#fbfaf9;--ink:#251f21;--ink2:#585254;--hair:#eae9ea;--teal:#73a89a;--sand:#f4efec}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:16px/1.5 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 20px 48px}
+h1{font:400 34px/1.1 Georgia,"Times New Roman",serif;margin:12px 0 8px}
+h2{font:400 22px/1.2 Georgia,serif;margin:32px 0 12px}
+.fact{color:var(--ink2);margin:0 0 6px}
+.lab{font-size:13px;color:var(--ink2);margin:16px 0 8px;display:block}
+textarea,input[type=text]{width:100%;font:inherit;color:var(--ink);background:var(--page);border:1px solid var(--hair);border-radius:12px;padding:12px 14px;line-height:1.45}
+textarea:focus,input:focus{outline:2px solid var(--teal);outline-offset:1px}
+.res{background:var(--sand)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:15px;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:10px;padding:0 14px;min-height:44px;cursor:pointer}
+button[aria-pressed=true]{background:var(--teal);color:#fff;border-color:var(--teal)}
+button.chip{border-radius:999px;color:var(--ink2);font-size:14px;text-align:left;padding:8px 12px}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink);width:100%;margin-top:20px;font-size:16px}
+button.ghost{border-color:transparent;background:none;color:var(--ink2);margin-top:8px}
+.head{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px}
+.note{font-size:13px;color:var(--ink2);margin:6px 0}
+.err{background:var(--sand);border-radius:12px;padding:12px 14px;margin-top:14px}
+.hist{display:block;width:100%;text-align:left;margin-bottom:8px;border-radius:12px;padding:10px 14px;color:var(--ink2)}
+input[type=range]{width:100%;accent-color:var(--teal);min-height:44px}
+.foot{color:var(--ink2);font-size:13px;margin-top:36px;border-top:1px solid var(--hair);padding-top:14px}
+[hidden]{display:none!important}
+body{background:linear-gradient(180deg,#eef5f2 0,var(--page) 220px) no-repeat,var(--page)}
+h1{letter-spacing:-.01em}
+button{transition:background .15s,transform .1s,box-shadow .15s;box-shadow:0 1px 0 rgba(37,31,33,.04)}
+button:active{transform:scale(.97)}
+button[aria-pressed=true]{box-shadow:0 2px 8px rgba(115,168,154,.45)}
+button.primary{box-shadow:0 6px 16px rgba(37,31,33,.18);min-height:52px;border-radius:14px}
+textarea,input[type=text]{box-shadow:inset 0 1px 2px rgba(37,31,33,.04)}
+.res{border-radius:14px}
+button:disabled{opacity:.45}
+@media (prefers-reduced-motion:reduce){button{transition:none}}
+</style></head><body>
+<main>
+<h1>Photo edit prompt maker</h1>
+<p class="fact">Better prompts for changing outfit or pose on your own photos. Works offline.</p>
+<span class="lab">What do you want to edit?</span><div class="row" id="g-type"></div>
+<label class="lab" for="what">Describe the change</label>
+<textarea id="what" rows="3"></textarea>
+<span class="lab">Keep the same (tap to toggle)</span><div class="row" id="g-keep"></div>
+<div class="note" id="lock-note"></div>
+<span class="lab">Shape</span><div class="row" id="g-ratio"></div>
+<span class="lab">Size in pixels</span><div class="row" id="g-pixels"></div>
+<input type="text" id="custom" hidden placeholder="e.g. 1080x1920" style="margin-top:8px">
+<span class="lab">Quality</span><div class="row" id="g-quality"></div>
+<span class="lab">How big a change</span><div class="row" id="g-amount"></div>
+<span class="lab">Editor you will use</span><div class="row" id="g-tool"></div>
+<input type="text" id="other" hidden placeholder="Editor name, e.g. Copilot" style="margin-top:8px">
+<div class="err" id="err" hidden>Describe the change first, even a few words.</div>
+<button class="primary" id="make">Make edit prompt</button>
+<section id="out" hidden>
+<h2>Your prompt</h2>
+<div class="head"><span class="lab" style="margin:0">Main prompt</span><button id="cp1">Copy</button></div>
+<textarea id="p1" class="res" readonly></textarea>
+<div class="head"><span class="lab" style="margin:0">Short version (if the main one fails)</span><button id="cp3">Copy</button></div>
+<textarea id="p3" class="res" readonly></textarea>
+<div id="negbox" hidden><div class="head"><span class="lab" style="margin:0">Negative prompt</span><button id="cp2">Copy</button></div><textarea id="p2" class="res" readonly></textarea></div>
+<div class="note" id="notes"></div>
+<h2>If something goes wrong</h2><ul id="tips" class="note"></ul>
+</section>
+<p class="foot">Built with rules, not an AI model. It writes edit prompts only and does not edit photos. It cannot override any editor's safety rules or promise an edit will not be refused. Your photos never leave your phone: nothing is uploaded here.</p>
+</main>
+<script>
+const TYPES=[{value:'outfit',label:'Change outfit'},{value:'pose',label:'Change pose'},{value:'both',label:'Outfit + pose'},{value:'background',label:'Change background'},{value:'hair',label:'Change hairstyle'},{value:'enhance',label:'Fix / enhance'}];
+const HINTS={outfit:'e.g. a navy blazer over a white t-shirt and dark jeans',pose:'e.g. standing with arms crossed, looking at the camera',both:'e.g. in a black kurta, sitting on a chair with hands on knees',background:'e.g. a sunny beach at golden hour',hair:'e.g. short textured crop, same color',enhance:'e.g. sharper, better color, remove noise'};
+const KEEPS=[{k:'face',label:'Face and identity',t:'face, expression and skin tone'},{k:'hair',label:'Hair',t:'hairstyle and hair color'},{k:'body',label:'Body shape',t:'body shape and proportions'},{k:'bg',label:'Background',t:'background'},{k:'light',label:'Lighting',t:'lighting'},{k:'cam',label:'Camera look',t:'camera angle and framing'}];
+const AMOUNT=[{value:'subtle',label:'Subtle'},{value:'natural',label:'Natural'},{value:'bold',label:'Clear change'}];
+const TOOLS=[{value:'chatgpt',label:'ChatGPT'},{value:'gemini',label:'Gemini'},{value:'meta',label:'Meta AI'},{value:'grok',label:'Grok'},{value:'other',label:'Other'}];
+const RATIOS=[{value:'keep',label:'Keep original'},{value:'1:1',label:'1:1'},{value:'4:5',label:'4:5'},{value:'9:16',label:'9:16'},{value:'16:9',label:'16:9'},{value:'3:2',label:'3:2'}];
+const PIXELS=[{value:'keep',label:'Keep original'},{value:'1080',label:'1080 px'},{value:'2048',label:'2048 px'},{value:'4096',label:'4096 px'},{value:'custom',label:'Custom'}];
+const QUALITY=[{value:'standard',label:'Standard'},{value:'high',label:'High'},{value:'max',label:'Highest'}];
+const CONFLICT={hair:['hair'],background:['bg','light'],pose:['cam'],both:['cam'],outfit:[],enhance:[]};
+const clean=s=>s.replace(/\s+/g,' ').replace(/[.\s]+$/,'').trim();
+function buildEdit(i){
+ const x=clean(i.what), keeps=KEEPS.filter(k=>i.keep.includes(k.k)&&!CONFLICT[i.type].includes(k.k)&&!((k.k==='cam'||k.k==='bg')&&i.ratio&&i.ratio!=='keep'));
+ const keepList=keeps.map(k=>k.t);
+ const keepTxt=keepList.length?keepList.join(', '):'everything not mentioned';
+ const real='It must look like a real, unedited photograph: correct anatomy and proportions, natural fabric folds, natural-looking hands where they are visible, consistent shadows and perspective.';
+ const amt={subtle:'Make the smallest change that does the job.',natural:'',bold:'Make the change clearly visible.'}[i.amount];
+ let change='';
+ switch(i.type){
+  case 'outfit':change=`Change only the clothing: dress the person in ${x}. Fit it naturally to their body and current pose.`;break;
+  case 'pose':change=`Change only the pose: the person is now ${x}. Keep the same clothes and apply the new pose naturally, with realistic limb lengths and joints.`;break;
+  case 'both':change=`Change the clothing and the pose as follows: ${x}. Fit the clothes naturally to the new pose, with realistic limb lengths and joints.`;break;
+  case 'background':change=`Replace only the background with ${x}. Keep the person and their edges clean, and match the new lighting, color and shadows to the person.`;break;
+  case 'hair':change=`Change only the hairstyle to ${x}. Blend it naturally at the hairline.`;break;
+  default:change=`Improve only the photo quality: ${x}. Do not change how anyone looks.`;
+ }
+ const notes=[];let main='',neg='',short='';
+ if(['chatgpt','gemini','meta','grok','other'].includes(i.tool)){
+  main=[`Edit the attached photo.`,change,`Keep the same person and keep these exactly unchanged: ${keepTxt}.`,amt,real,outLine(i),`Change nothing else.`].filter(Boolean).join(' ');
+  short=`Edit this photo: ${shortChange(i,x)}. ${shortKeep(i,keeps)} ${shortOut(i)} Change nothing else.`.replace(/ +/g,' ');
+  notes.push('Attach the original photo in the same message as the prompt.');
+  if(outLine(i))notes.push('Size, pixel and quality lines are a request written into the prompt. Each editor decides which settings it really supports, so also check its own export options.');
+  if(i.ratio&&i.ratio!=='keep')notes.push('Camera framing and background locks are off because you picked a new shape: the editor may need to extend or crop the scene.');
+  notes.push(i.tool==='other'?'Same wording as for the other editors. This tool cannot check what '+(clean(i.other||'')||'that app')+' supports, including size, pixel and quality options. Set those in the app itself; the output line is only a request.':i.tool==='meta'||i.tool==='grok'?'Same wording as for the other editors. Whether your app or account can edit an attached photo is up to that app, and this tool cannot check it. Suggestion: if the result drifts, re-attach the original and send the short version.':i.tool==='chatgpt'?'Suggestion: for a new edit, try a new chat with the original photo so earlier changes do not carry over.':'Suggestion: if the result drifts, re-attach the original photo and send the short version.');
+ }else if(i.tool==='kontext'){
+  const kt=keepList.length?` while maintaining the same ${keepList.join(', ')}`:'';
+  main=[`${cap(shortChange(i,x))}${kt}.`,amt,`Keep the result photorealistic with natural proportions and consistent lighting.`].filter(Boolean).join(' ');
+  short=`${cap(shortChange(i,x))}. ${shortKeep(i,keeps)}`;
+  notes.push('These editors work best with one clear instruction. Do the next change as a second step on the result.');
+ }else{
+  const sub={outfit:`wearing ${x}`,pose:`${x}`,both:`${x}`,background:`in front of ${x}`,hair:`with ${x} hairstyle`,enhance:`${x}`}[i.type];
+  main=`photo of the same person ${sub}, same ${keepList.join(', ')||'natural look'}, realistic skin texture, natural fabric folds, consistent lighting, high quality photograph`;
+  neg='different person, changed face, distorted face, deformed hands, extra fingers, extra limbs, bad anatomy, blurry, artifacts, plastic skin';
+  short=`photo of the same person ${sub}, same ${shortKeepList(i,keeps).join(', ')||'natural look'}, realistic`;
+  notes.push('Inpaint: paint the mask only over the part you want changed ('+{outfit:'clothes',pose:'the body and arms',both:'clothes and body',background:'background only',hair:'hair',enhance:'the area to fix'}[i.type]+'). Everything outside the mask stays untouched.');
+  notes.push('Denoising strength controls how much changes: lower keeps more of the original, higher changes more and can alter the face. Adjust in small steps. Settings differ between tools and models, so treat this as something to try.');
+ }
+ return {main,neg,short,notes};
+}
+function shortKeepList(i,keeps){const l=keeps.map(k=>({face:'face',hair:'hairstyle',body:'body proportions',bg:'background',light:'lighting',cam:'camera angle and framing'}[k.k]));if(i.type==='pose')l.unshift('clothes');if(['hair','background'].includes(i.type))l.unshift('clothes');return l}
+function shortKeep(i,keeps){const l=shortKeepList(i,keeps);return l.length?`Keep the same ${l.join(', ')}.`:''}
+function outLine(i){
+ const p=[];const r=i.ratio||'keep';
+ if(r!=='keep')p.push('aspect ratio '+r);
+ if(i.pixels==='custom'){const c=clean(i.custom||'');if(c)p.push(c+' pixels')}else if(i.pixels&&i.pixels!=='keep')p.push('about '+i.pixels+' pixels on the long side');
+ if(i.quality==='high')p.push('high quality with sharp detail and no visible compression artifacts');
+ if(i.quality==='max')p.push('the highest quality and resolution available, sharp detail, no visible compression artifacts');
+ if(!p.length)return '';
+ let t='Output: '+p.join(', ')+'. Use these only if this editor supports them; otherwise keep the original size.';
+ if(r!=='keep')t+=' If the shape differs from the original, extend or crop the existing scene naturally, keeping its style, and do not stretch or distort the person.';
+ return t}
+function shortOut(i){const p=[];if(i.ratio&&i.ratio!=='keep')p.push(i.ratio);if(i.pixels==='custom'){const c=clean(i.custom||'');if(c)p.push(c+' px')}else if(i.pixels&&i.pixels!=='keep')p.push(i.pixels+' px');if(i.quality==='high')p.push('high quality');if(i.quality==='max')p.push('highest quality');return p.length?'Output '+p.join(', ')+' if supported.':''}
+function shortChange(i,x){return {outfit:`change the clothing to ${x}`,pose:`change the pose so the person is ${x}`,both:`change the outfit and pose: ${x}`,background:`replace the background with ${x}`,hair:`change the hairstyle to ${x}`,enhance:`improve the photo: ${x}`}[i.type]}
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const TIPS=[
+ 'Use a clear JPG or PNG of one person, not a tiny or heavily compressed copy.',
+ 'One change per step. Finish the outfit, then ask for the pose in a new message.',
+ 'If the face drifts, attach the original again and add: "Do not alter the face."',
+ 'Describe clothing in plain words (fabric, color, fit). If you get errors, simpler wording is worth trying.',
+ 'Use only photos of yourself or people who said yes.',
+ 'If the tool refuses or errors, that is its own rule or a temporary fault. Retry once with the short version, then try a different editor. This app cannot get around a tool\'s rules.'];
+const $=id=>document.getElementById(id);
+const S={type:'outfit',amount:'natural',tool:'chatgpt',ratio:'keep',pixels:'keep',quality:'standard',keep:['face','hair','body','bg','light','cam']};
+const NOTE={pose:'Camera framing is not locked for pose changes, so the new pose can fit the frame.',both:'Camera framing is not locked for pose changes, so the new pose can fit the frame.',hair:'Hair lock is off because you are changing the hairstyle.',background:'Background and lighting locks are off because you are changing the background.'};
+function fit(id){const t=$(id);t.style.height='auto';t.style.height=(t.scrollHeight+4)+'px'}
+function btns(id,opts,sel,cb,dis){const g=$(id);g.innerHTML='';opts.forEach(o=>{const b=document.createElement('button');b.textContent=o.label;b.setAttribute('aria-pressed',sel(o));if(dis&&dis(o)){b.disabled=true;b.style.opacity='.45'}b.onclick=()=>{cb(o);btns(id,opts,sel,cb,dis)};g.appendChild(b)})}
+function draw(){
+ if(S.ratio!=='keep')S.keep=S.keep.filter(k=>k!=='cam'&&k!=='bg');
+ $('lock-note').textContent=(NOTE[S.type]||'')+(S.ratio!=='keep'?' Background and camera locks are off because you picked a new shape.':'');
+ btns('g-type',TYPES,o=>S.type===o.value,o=>{S.type=o.value;S.keep=S.keep.filter(k=>!CONFLICT[S.type].includes(k));$('what').placeholder=HINTS[S.type];draw()});
+ btns('g-keep',KEEPS.map(k=>({value:k.k,label:k.label})),o=>S.keep.includes(o.value),o=>{S.keep=S.keep.includes(o.value)?S.keep.filter(v=>v!==o.value):S.keep.concat(o.value)},o=>CONFLICT[S.type].includes(o.value)||(S.ratio!=='keep'&&(o.value==='cam'||o.value==='bg')));
+ btns('g-amount',AMOUNT,o=>S.amount===o.value,o=>{S.amount=o.value});
+ btns('g-tool',TOOLS,o=>S.tool===o.value,o=>{S.tool=o.value;$('other').hidden=S.tool!=='other'});
+ btns('g-ratio',RATIOS,o=>S.ratio===o.value,o=>{S.ratio=o.value;draw()});
+ btns('g-pixels',PIXELS,o=>S.pixels===o.value,o=>{S.pixels=o.value;$('custom').hidden=S.pixels!=='custom'});
+ btns('g-quality',QUALITY,o=>S.quality===o.value,o=>{S.quality=o.value});
+}
+draw();$('what').placeholder=HINTS.outfit;
+document.addEventListener('click',e=>{if(e.target.closest('#g-type'))$('what').placeholder=HINTS[S.type]});
+$('make').onclick=()=>{
+ if($('what').value.trim().length<3){$('err').hidden=false;return}$('err').hidden=true;
+ const r=buildEdit({type:S.type,what:$('what').value,keep:S.keep,amount:S.amount,tool:S.tool,ratio:S.ratio,pixels:S.pixels,quality:S.quality,custom:$('custom').value,other:$('other').value});
+ $('out').hidden=false;$('p1').value=r.main;fit('p1');$('p3').value=r.short;fit('p3');
+ $('negbox').hidden=!r.neg;$('p2').value=r.neg;fit('p2');
+ $('notes').innerHTML='';r.notes.forEach(n=>{const d=document.createElement('div');d.textContent=n;d.style.marginBottom='6px';$('notes').appendChild(d)});
+ $('tips').innerHTML='';TIPS.forEach(t=>{const l=document.createElement('li');l.textContent=t;l.style.marginBottom='6px';$('tips').appendChild(l)});
+ setTimeout(()=>$('out').scrollIntoView({behavior:'smooth'}),50)};
+async function cp(id,btn){const t=$(id).value;let ok=false;try{if(window.AndroidApp){ok=AndroidApp.copy(t)}else{await navigator.clipboard.writeText(t);ok=true}}catch(e){try{$(id).select();ok=document.execCommand('copy')}catch(e2){}}const o=btn.textContent;btn.textContent=ok?'Copied':'Hold text to copy';setTimeout(()=>btn.textContent=o,2000)}
+$('cp1').onclick=e=>cp('p1',e.target);$('cp2').onclick=e=>cp('p2',e.target);$('cp3').onclick=e=>cp('p3',e.target);
+</script></body></html>
